@@ -56,7 +56,7 @@ def create_global_scaler(folder_path, chunk_size=10000):
     return scaler_input, scaler_output
 
 # --- สมมติว่าไฟล์ของคุณอยู่ในโฟลเดอร์ชื่อ 'raw' ---
-DATA_FOLDER = "raw" 
+DATA_FOLDER = r"D:\Project_end\mainproject\data\raw" 
 # สร้างโฟลเดอร์และไฟล์จำลอง (หากยังไม่มี)
 if not os.path.exists(DATA_FOLDER):
     os.makedirs(DATA_FOLDER)
