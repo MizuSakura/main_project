@@ -80,3 +80,4 @@
   > ติดตั้งได้โดยใช้คำสั่ง:  
   ```bash
   pip install -r requirements.txt
+  pip freeze > requirements.txt
