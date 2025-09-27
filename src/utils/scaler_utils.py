@@ -6,8 +6,8 @@ import joblib
 import os
 from pathlib import Path
 
-DATA_FOLDER = r"D:\Project_end\mainproject\data\raw" 
-FOLDER_PATH_SAVE = r"D:\Project_end\mainproject\experiments\config\predict_model"
+DATA_FOLDER = r"D:\Project_end\mainproject_fix\main_project\data\raw" 
+FOLDER_PATH_SAVE = r"D:\Project_end\mainproject_fix\main_project\config\predict_model"
 
 CHUNK_SIZE = 10000
 
