@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 DATA_FOLDER = r"D:\Project_end\mainproject\data\raw" 
-FOLDER_PATH_SAVE = r"D:\Project_end\mainproject\experiments\config\predict_model"
+FOLDER_PATH_SAVE = r"D:\Project_end\mainproject_fix\main_project\config"
 
 CHUNK_SIZE = 10000
 
