@@ -98,7 +98,7 @@ class SignalGenerator:
     def parabolic(self, coeff=1, start_time=0):
         return coeff * np.maximum(0, self.t - start_time)**2
 if __name__ == '__main__':
-    TIME_SIMULATION = 60000
+    TIME_SIMULATION = 600
     VOLT_SUPPLY = 24
     R = 2000 #Ohm
     C = 0.1 #F
@@ -106,8 +106,8 @@ if __name__ == '__main__':
     SETPOINT = 24
     MAX_CURRENT = 3 #A
     MODE_CONTROL = 'voltage' # current
-    FOLDER = r"D:\Project_end\mainproject\data\raw"
-    FILE_NAME = "data_log_simulation_20_09_2568"
+    FOLDER = r"D:\Project_end\mainproject_fix\main_project\data\raw"
+    FILE_NAME = "data_log_simulation_22_09_2568"
     sg = SignalGenerator(t_end= TIME_SIMULATION, dt=DT)
     env = RC_Tank_Env(R=R,C=C,dt=DT,control_mode='voltage',setpoint_level=SETPOINT,
                     max_action_volt=VOLT_SUPPLY,max_action_current=MAX_CURRENT)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
         soure = MAX_CURRENT
 
 
-    DATA_INPUT = sg.pwm(amplitude=1,freq=3,duty=0.1)
+    DATA_INPUT = sg.pwm(amplitude=1,freq=0.1,duty=0.3)
     #DATA_INPUT = sg.step(amplitude=1, start_time=0)
     #DATA_INPUT = sg.ramp(slope=1, start_time=0)
     DATA_OUTPUT,ACTION = [],[]
