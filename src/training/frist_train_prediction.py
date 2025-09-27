@@ -10,9 +10,9 @@ from src.data.generator import data_generator
 from src.data.format_duration_time import format_duration
 
 # กำหนดค่าพารามิเตอร์และ path ต่าง ๆ
-SCALER_FOLDER = r"D:\Project_end\mainproject\experiments\config\predict_model"
-DATA_FOLDER = r"D:\Project_end\mainproject\data\raw"
-PATH_SAVE_MODEL = r"D:\Project_end\mainproject\experiments\config\predict_model"
+SCALER_FOLDER = r"D:\Project_end\mainproject_fix\main_project\config\predict_model"
+DATA_FOLDER = r"D:\Project_end\mainproject_fix\main_project\data\raw"
+PATH_SAVE_MODEL = r"D:\Project_end\mainproject_fix\main_project\experiments\model_ex01"
 
 WINDOW_SIZE = 30
 BATCH_SIZE = 64
