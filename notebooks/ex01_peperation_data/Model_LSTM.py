@@ -8,8 +8,8 @@ import time
 
 # --- Config ---
 DATA_FOLDER = r"D:\Project_end\mainproject\data\raw"
-SCALER_FOLDER = r"D:\Project_end\mainproject\experiments\config\predict_model"
-PATH_SAVE_MODEL = r"D:\Project_end\mainproject\experiments\config\predict_model"
+SCALER_FOLDER = r"D:\Project_end\mainproject_fix\main_project\config"
+PATH_SAVE_MODEL = r"D:\Project_end\mainproject_fix\main_project\experiments\model_ex01"
 
 # Hyperparameters
 WINDOW_SIZE = 30
