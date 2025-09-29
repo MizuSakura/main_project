@@ -3,53 +3,60 @@ import torch.nn as nn
 import joblib
 from pathlib import Path
 import pandas as pd
-import time 
+import time
 import shutil
 import tempfile
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
-# กรุณาแก้ไข path และ import ให้ตรงกับโครงสร้างโปรเจคของคุณ
-from src.models.lstm_model import LSTMModel
-from src.data.generator import data_generator
-from src.data.format_duration_time import format_duration
+# --- Project Paths (relative) ---
+BASE_DIR = Path(__file__).resolve().parent.parent.parent  # ขึ้น 3 ระดับจากไฟล์ fine_tune.py
+SCALER_REFERANCE_FOLDER = BASE_DIR / "config/predict_model"
+SCALER_FINE_TUNE_FOLDER = BASE_DIR / "config/fine_tune"
+MODEL_FOLDER = BASE_DIR / "experiments/model_ex01"
+MODEL_FINE_TUNE_FOLDER = BASE_DIR / "experiments/fine_tune_model"
+NEW_DATA_FOLDER = BASE_DIR / "data/raw"
 
-SCALER_REFERANCE_FOLDER = r"D:\Project_end\mainproject_fix\main_project\config\predict_model"
-SCALER_FINE_TUNE_FOLDER = r"D:\Project_end\mainproject_fix\main_project\config\fine_tune"
-MODEL_FOLDER = r"D:\Project_end\mainproject_fix\main_project\experiments\model_ex01"
-NEW_DATA_FOLDER = r"D:\Project_end\mainproject_fix\main_project\data\raw" 
-MODEL_FINE_TUNE_FOLDER = r"D:\Project_end\mainproject_fix\main_project\experiments\fine_tune_model"
-# Hyperparameters สำหรับ Fine-Tuning
+# --- Hyperparameters ---
 WINDOW_SIZE = 30
 BATCH_SIZE = 64
 HIDDEN_SIZE = 50
 NUM_LAYERS = 1
 LEARNING_RATE = 0.001
 NUM_EPOCHS = 10
-   
+
+# --- Imports from project ---
+from src.models.lstm_model import LSTMModel
+from src.data.generator import data_generator
+from src.data.format_duration_time import format_duration
+
+
 def fine_tune_scale():
-    print("---  Start Fine-Tuning ---")
-    
+    print("---  Start Fine-Tuning Scalers ---")
     try:
-        input_scaler_path = Path(SCALER_REFERANCE_FOLDER) / "scaler_input.pkl"
-        output_scaler_path = Path(SCALER_REFERANCE_FOLDER) / "scaler_output.pkl"
+        input_scaler_path = SCALER_REFERANCE_FOLDER / "scaler_input.pkl"
+        output_scaler_path = SCALER_REFERANCE_FOLDER / "scaler_output.pkl"
         scaler_input = joblib.load(input_scaler_path)
         scaler_output = joblib.load(output_scaler_path)
 
-        # ค้นหาไฟล์ใหม่
-        new_files = list(Path(NEW_DATA_FOLDER).glob("*.csv"))
+        # ค้นหาไฟล์ CSV ใหม่
+        new_files = list(NEW_DATA_FOLDER.glob("*.csv"))
         if not new_files:
             print("⚠️ File data not found Error")
             return
 
         # partial_fit scaler ด้วยข้อมูลใหม่
         for file_path in new_files:
-            with pd.read_csv(file_path, chunksize=10000) as reader:
-                for chunk in reader:
+            for chunk in pd.read_csv(file_path, chunksize=10000):
+                if 'DATA_INPUT' in chunk and 'DATA_OUTPUT' in chunk:
                     scaler_input.partial_fit(chunk[['DATA_INPUT']].values)
                     scaler_output.partial_fit(chunk[['DATA_OUTPUT']].values)
+                else:
+                    print(f"⚠️ Column missing in {file_path.name}")
 
         # ตั้งชื่อไฟล์ zip ตามวันเวลา
-        timestamp = time.strftime("%d_%m_%Y")
-        zip_filename = Path(SCALER_FINE_TUNE_FOLDER) / f"scalers_{timestamp}.zip"
+        timestamp = time.strftime("%d_%m_%Y_%H%M%S")
+        zip_filename = SCALER_FINE_TUNE_FOLDER / f"scalers_{timestamp}.zip"
 
         # ใช้ temp dir เก็บไฟล์ pkl ก่อน zip
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -65,21 +72,20 @@ def fine_tune_scale():
 
         print(f"✅ Fine-tuned scalers saved to: {zip_filename}")
 
-    except FileNotFoundError:
-        print(f"❌ File  config scaler not found Error")
-        return
-    
+    except (FileNotFoundError, OSError, ValueError) as e:
+        print(f"❌ Error during fine-tune scalers: {e}")
+
 
 def fine_tune_model():
+    print("---  Start Fine-Tuning Model ---")
     try:
-        # 🟢 โหลดจาก zip
-        zip_files = list(Path(SCALER_FINE_TUNE_FOLDER).glob("*.zip"))
+        # โหลด scalers จาก zip ล่าสุด
+        zip_files = list(SCALER_FINE_TUNE_FOLDER.glob("*.zip"))
         if not zip_files:
             print("⚠️ ไม่พบไฟล์ zip ของ scaler")
             return
 
         latest_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             shutil.unpack_archive(latest_zip, tmpdir, 'zip')
             tmpdir_path = Path(tmpdir)
@@ -88,16 +94,32 @@ def fine_tune_model():
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print("✅ Loaded scalers from zip and ready for fine-tuning")
-        model = LSTMModel(input_dim=2,
-                      hidden_dim=HIDDEN_SIZE,
-                      layer_dim=NUM_LAYERS,
-                      output_dim=1).to(device)
+
+        model = LSTMModel(
+            input_dim=2,
+            hidden_dim=HIDDEN_SIZE,
+            layer_dim=NUM_LAYERS,
+            output_dim=1
+        ).to(device)
+
+        # โหลด pretrained model ถ้ามี
+        model_files = list(MODEL_FOLDER.glob("*.pth"))
+        if not model_files:
+            print("⚠️ ไม่พบ pretrained model ใน MODEL_FOLDER, จะฝึกจาก scratch")
+        else:
+            latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
+            model.load_state_dict(torch.load(latest_model, map_location=device))
+            print(f"✅ Loaded pretrained model: {latest_model}")
 
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-        start_time = time.time()
-        model.train()
-        csv_files = list(Path(NEW_DATA_FOLDER).glob("*.csv"))
+        writer = SummaryWriter(log_dir=BASE_DIR/'runs/fine_tune')
+
+        csv_files = list(NEW_DATA_FOLDER.glob("*.csv"))
+        if not csv_files:
+            print("⚠️ ไม่พบไฟล์ CSV สำหรับ train model")
+            return
+
         start_time = time.time()
 
         for epoch in range(NUM_EPOCHS):
@@ -106,15 +128,15 @@ def fine_tune_model():
             batch_count = 0
 
             train_gen = data_generator(csv_files, scaler_input, scaler_output,
-                                    WINDOW_SIZE, BATCH_SIZE)
+                                       WINDOW_SIZE, BATCH_SIZE)
 
-            for X_batch, y_batch in train_gen:
-                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-                outputs = model(X_batch)
-                loss = criterion(outputs, y_batch)
+            for X_batch, y_batch in tqdm(train_gen, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}"):
+                X_batch = X_batch.float().to(device)
+                y_batch = y_batch.float().to(device)
 
                 optimizer.zero_grad()
+                outputs = model(X_batch)
+                loss = criterion(outputs, y_batch)
                 loss.backward()
                 optimizer.step()
 
@@ -122,22 +144,23 @@ def fine_tune_model():
                 batch_count += 1
 
             avg_loss = epoch_loss / max(1, batch_count)
+            writer.add_scalar('Loss/train', avg_loss, epoch)
             print(f"Epoch [{epoch+1}/{NUM_EPOCHS}] - Loss: {avg_loss:.6f}")
 
         total_time = time.time() - start_time
         formatted_time = format_duration(total_time)
         print(f"✅ Training finished. Total time: {formatted_time}")
 
-
-        # บันทึกโมเดล
-        timestamp = time.strftime("%d_%m_%Y")
-        model_filename = Path(MODEL_FINE_TUNE_FOLDER) / f"lstm_model_{timestamp}.pth"
+        # บันทึกโมเดล fine-tune ใหม่
+        timestamp = time.strftime("%d_%m_%Y_%H%M%S")
+        model_filename = MODEL_FINE_TUNE_FOLDER / f"lstm_model_{timestamp}.pth"
         torch.save(model.state_dict(), model_filename)
-        print(f"📂 โมเดลถูกบันทึกที่ {model_filename}")
+        print(f"📂 Fine-tuned model saved at {model_filename}")
 
+        writer.close()
 
-    except FileNotFoundError:
-        print(f"❌ ไม่พบไฟล์โมเดลเดิม! กรุณารันสคริปต์ 02_train_model.py ก่อน")
+    except (FileNotFoundError, OSError, ValueError) as e:
+        print(f"❌ Error during fine-tune model: {e}")
         return
 
 
