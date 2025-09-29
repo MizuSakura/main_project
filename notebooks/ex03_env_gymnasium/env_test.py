@@ -5,36 +5,49 @@ import torch
 import joblib
 from pathlib import Path
 from stable_baselines3 import SAC
-from src.models.lstm_model import LSTMModel  # ปรับ path ให้ตรงกับโปรเจกต์
+from src.models.lstm_model import LSTMModel
+import matplotlib.pyplot as plt
+import numpy as np
 
-# --- Relative paths ---
-BASE_DIR = Path(__file__).resolve().parent.parent  # main_project
+# -----------------------------
+# --- ตั้งค่า relative paths ---
+# -----------------------------
+BASE_DIR = Path(__file__).resolve().parent.parent.parent  # ขึ้น 3 ระดับ → main_project
 SCALER_FOLDER = BASE_DIR / "config/predict_model"
 MODEL_FOLDER = BASE_DIR / "experiments/fine_tune_model"
+NEW_DATA_FOLDER = BASE_DIR / "data/raw"
 
-# โหลด scalers
+# -----------------------------
+# --- โหลด scalers ---
+# -----------------------------
 scaler_input_file = SCALER_FOLDER / "scaler_input.pkl"
 scaler_output_file = SCALER_FOLDER / "scaler_output.pkl"
+print(f"Scaler input path: {scaler_input_file}")
 
 if not scaler_input_file.exists() or not scaler_output_file.exists():
-    raise FileNotFoundError("⚠️ Scaler files not found, run fine-tune scaler first.")
+    raise FileNotFoundError(
+        f"⚠️ Scaler files not found at {SCALER_FOLDER}, run fine-tune scaler first."
+    )
 
 scaler_input = joblib.load(scaler_input_file)
 scaler_output = joblib.load(scaler_output_file)
 
-# โหลด pretrained LSTM model
+# -----------------------------
+# --- โหลด pretrained LSTM model ---
+# -----------------------------
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model_files = list(MODEL_FOLDER.glob("*.pth"))
 if not model_files:
-    raise FileNotFoundError("⚠️ No pretrained LSTM model found in MODEL_FOLDER")
+    raise FileNotFoundError(f"⚠️ No pretrained LSTM model found in {MODEL_FOLDER}")
 
 latest_model_file = max(model_files, key=lambda p: p.stat().st_mtime)
 model = LSTMModel(input_dim=2, hidden_dim=50, layer_dim=1, output_dim=1).to(device)
 model.load_state_dict(torch.load(latest_model_file, map_location=device))
 model.eval()
 
-
+# -----------------------------
 # --- Custom Gym Environment ---
+# -----------------------------
 class LSTMEnv(gym.Env):
     metadata = {"render.modes": ["human"]}
 
@@ -62,8 +75,8 @@ class LSTMEnv(gym.Env):
         self.current_step += 1
         action_val = np.clip(action[0], -1.0, 1.0)
 
-        # Normalize input
-        scaled_input = self.scaler_input.transform([[action_val]])[0]
+        # Normalize input → scalar
+        scaled_input = self.scaler_input.transform([[action_val]])[0, 0]
 
         lstm_input = np.copy(self.history)
         lstm_input[-1, 0] = scaled_input
@@ -74,9 +87,11 @@ class LSTMEnv(gym.Env):
 
         output_real = self.scaler_output.inverse_transform([[y_pred]])[0, 0]
 
+        # Update history
         self.history = np.roll(self.history, shift=-1, axis=0)
         self.history[-1, :] = [action_val, output_real]
 
+        # Reward: negative MSE vs setpoint
         reward = -((output_real - self.setpoint) ** 2)
         terminated = self.current_step >= self.max_steps
         truncated = False
@@ -88,9 +103,16 @@ class LSTMEnv(gym.Env):
         print(f"Step {self.current_step}: output={self.history[-1,1]:.4f}, input={self.history[-1,0]:.4f}")
 
 
+# -----------------------------
 # --- Create environment ---
+# -----------------------------
 env = LSTMEnv(model, scaler_input, scaler_output, window_size=30, setpoint=5.0, max_steps=200, device=device)
 
+# -----------------------------
 # --- RL Agent ---
+# -----------------------------
 agent = SAC("MlpPolicy", env, verbose=1)
-agent.learn(total_timesteps=10000)
+agent.learn(total_timesteps=100000)
+MODEL_SAVE_PATH = r"D:\Project_end\mainproject_fix\main_project\notebooks\ex03_env_gymnasium"
+agent.save(MODEL_SAVE_PATH / "sac_lstm_agent")
+print(f"✅ Model saved at {MODEL_SAVE_PATH}")
