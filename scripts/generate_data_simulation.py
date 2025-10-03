@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from Logging_andplot import Logger
 import numpy as np
+import time
 
 class RC_Tank_Env:
     """
@@ -34,9 +35,9 @@ class RC_Tank_Env:
         self.reset()
 
     def reset(self,defualt=None):
+        self.level = np.random.uniform(low=0, high=self.level_max)
         if defualt is not None:
             self.level = defualt
-        self.level = np.random.uniform(low=0, high=self.level_max)
         self.time = 0.0
         done = False
         return float(self.level), done
@@ -98,56 +99,65 @@ class SignalGenerator:
     def parabolic(self, coeff=1, start_time=0):
         return coeff * np.maximum(0, self.t - start_time)**2
 if __name__ == '__main__':
-    TIME_SIMULATION = 600
+    TIME_SIMULATION = 1000        # ลดเวลาจำลองให้เหมาะสม
     VOLT_SUPPLY = 24
     R = 2000 #Ohm
-    C = 0.1 #F
+    C = 0.1  #F
     DT = 0.01
     SETPOINT = 24
     MAX_CURRENT = 3 #A
-    MODE_CONTROL = 'voltage' # current
+    MODE_CONTROL = 'voltage' # หรือ 'current'
     FOLDER = r"D:\Project_end\mainproject_fix\main_project\data\raw"
-    FILE_NAME = "data_log_simulation_22_09_2568"
-    sg = SignalGenerator(t_end= TIME_SIMULATION, dt=DT)
-    env = RC_Tank_Env(R=R,C=C,dt=DT,control_mode='voltage',setpoint_level=SETPOINT,
-                    max_action_volt=VOLT_SUPPLY,max_action_current=MAX_CURRENT)
-    logger = Logger()
-    env.reset(defualt=0)
+    FOLDER_PICTURE = r"D:\Project_end\mainproject_fix\main_project\data\picture"
+    PWM = np.arange(0,1.1,0.1)
+    File_name = np.arange(20,30,1)
 
-    if MODE_CONTROL == 'voltage':
-        soure = VOLT_SUPPLY
-    else:
-        soure = MAX_CURRENT
+    LOG_DT = 0.1   
+    log_interval = int(LOG_DT / DT)  # กี่ simulation step ต่อการ log 1 ครั้ง
 
+    for i in range(0,10):
+        FILE_NAME = str(File_name[i])
+        sg = SignalGenerator(t_end=TIME_SIMULATION, dt=DT)
+        env = RC_Tank_Env(R=R, C=C, dt=DT, control_mode=MODE_CONTROL,
+                          setpoint_level=SETPOINT,
+                          max_action_volt=VOLT_SUPPLY,
+                          max_action_current=MAX_CURRENT,
+                          level_max=VOLT_SUPPLY)
+        logger = Logger()
+        env.reset(defualt=0)
 
-    DATA_INPUT = sg.pwm(amplitude=1,freq=0.1,duty=0.3)
-    #DATA_INPUT = sg.step(amplitude=1, start_time=0)
-    #DATA_INPUT = sg.ramp(slope=1, start_time=0)
-    DATA_OUTPUT,ACTION = [],[]
-    # ไม่ต้องใช้ลิสต์ TIME แล้ว
-    # TIME = [] 
+        if MODE_CONTROL == 'voltage':
+            soure = VOLT_SUPPLY
+        else:
+            soure = MAX_CURRENT
 
-    for signal in DATA_INPUT:  # << เอา enumerate และ idx ออกได้เลย
-        output = (soure * signal)
-        v_out, done = env.step(action=output)
-        ACTION.append(output)
-        DATA_OUTPUT.append(v_out)
-        # ไม่ต้อง append ค่า time แล้ว
-        # TIME.append(idx * DT) 
+        DATA_INPUT = sg.pwm(amplitude=1, freq=0.001, duty=PWM[i])
+        DATA_OUTPUT, ACTION, TIME_LOG = [], [], []
 
-    logger.add_data_log(
-            columns_name=["DATA_INPUT", "DATA_OUTPUT"],
-            data_list=[ACTION, DATA_OUTPUT])
-    logger.save_to_csv(file_name=FILE_NAME,folder_name=FOLDER)
+        for idx, signal in enumerate(DATA_INPUT):
+            output = soure * signal
+            v_out, done = env.step(action=output)
 
-    # << ใช้ sg.t ซึ่งเป็นแกนเวลาที่ถูกต้องในการพล็อต
-    time_axis = sg.t 
+            # << log ตาม sampling rate ที่กำหนด
+            if idx % log_interval == 0:
+                ACTION.append(output)
+                DATA_OUTPUT.append(v_out)
+                TIME_LOG.append(idx * DT)
 
-    plt.plot(time_axis, DATA_OUTPUT, label="DATA_OUTPUT")
-    plt.plot(time_axis, ACTION, label="DATA_INPUT SCALE", alpha=0.5)
-    plt.legend()
-    plt.xlabel("Time [s]") # << แกน X เป็นวินาทีแล้ว
-    plt.ylabel("Amplitude")
-    plt.title("Test Input Signals")
-    plt.grid(True)
-    plt.show()
+        logger.add_data_log(
+            columns_name=["TIME", "DATA_INPUT", "DATA_OUTPUT"],
+            data_list=[TIME_LOG, ACTION, DATA_OUTPUT])
+        logger.save_to_csv(file_name=FILE_NAME, folder_name=FOLDER)
+
+        # ใช้ TIME_LOG แทน sg.t เพื่อพล็อต
+        plt.plot(TIME_LOG, DATA_OUTPUT, label="DATA_OUTPUT")
+        plt.plot(TIME_LOG, ACTION, label="DATA_INPUT SCALE", alpha=0.5)
+        plt.legend()
+        plt.xlabel("Time [s]")
+        plt.ylabel("Amplitude")
+        plt.title(f"Test Input Signals (duty={PWM[i]:.1f})")
+        plt.grid(True)
+        plt.show()
+        plt.savefig(f"{FOLDER}/{FILE_NAME}.png")
+        time.sleep(1)
+        plt.close()
